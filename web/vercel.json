@@ -1,8 +1,10 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "api/run.py": {
       "maxDuration": 60,
-      "memory": 1024
+      "memory": 1024,
+      "excludeFiles": "{node_modules/**,.next/**,.vercel/**,app/**,components/**,lib/**,public/**,**/__pycache__/**,**/*.pyc,**/test_*.py}"
     }
   }
 }

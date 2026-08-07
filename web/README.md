@@ -24,6 +24,25 @@ is `SimBroker`, an in-memory fill simulator.
   those pull in scipy, matplotlib, and textual, and would push the deployed
   function well past Vercel's serverless function size limit.
 
+## Function size
+
+Vercel's Python runtime does no tree-shaking — a function bundles every
+project file reachable at build time, and its dependencies are measured
+uncompressed. Two things keep this one small, and both matter:
+
+- `vercel.json` sets `excludeFiles` so the frontend (`node_modules/`,
+  `.next/`, `app/`, `components/`, `lib/`, `public/`) is kept out of the
+  Python bundle. Without it, `node_modules` alone would dominate it.
+- `requirements.txt` omits pandas and numpy. They were reachable only from
+  `signals/base.py`'s `QuantModel` helpers, which no shipped model calls;
+  together they are ~158MB. With them the installed deps measure **241MB**
+  against a 250MB limit — deployable today, and broken the moment a
+  transitive dep grows. Without them: **77MB**.
+
+If you add a quant model that genuinely needs numpy or pandas, add it back
+to `requirements.txt` and re-check the total — you'll have roughly 170MB of
+headroom to work with, and `signals/base.py` documents what was changed.
+
 ## Why Anthropic-only
 
 The full `aihf` package supports Anthropic, OpenAI, xAI, DeepSeek, Google,
@@ -36,29 +55,34 @@ locally — same engine, full registry.
 
 ## Local development
 
-```bash
-cd web
-npm install
-cp .env.example .env.local   # fill in FINANCIAL_DATASETS_API_KEY, ANTHROPIC_API_KEY
-npm run dev
-```
-
-The Next.js dev server doesn't run Python functions itself. To exercise
-`/api/run` locally, either use the [Vercel CLI](https://vercel.com/docs/cli)
-(`vercel dev`, which runs both runtimes together), or run the function
-directly:
+`next dev` serves the frontend but does not run Python, so the API needs
+its own process. Two terminals:
 
 ```bash
+# terminal 1 — the Python function
 cd web/api
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r ../requirements.txt
 export ANTHROPIC_API_KEY=... FINANCIAL_DATASETS_API_KEY=...
-python3 -c "
-from http.server import HTTPServer
-import run
-HTTPServer(('127.0.0.1', 8000), run.handler).serve_forever()
-"
+python3 dev_server.py            # serves the real handler on :5328
 ```
+
+```bash
+# terminal 2 — the frontend
+cd web
+npm install
+cp .env.example .env.local       # FINANCIAL_DATASETS_API_KEY, ANTHROPIC_API_KEY
+npm run dev                      # http://localhost:3000
+```
+
+`next.config.mjs` rewrites `/api/*` to `127.0.0.1:5328` **in development
+only**, so the browser calls the same `/api/run` path it will call in
+production. The rewrite is not emitted into production builds — there
+Vercel routes `/api/run` straight to the function.
+
+`dev_server.py` runs the same `handler` class Vercel invokes, so what you
+exercise locally is what deploys. (`vercel dev` also works and runs both
+runtimes in one process, if you prefer the CLI.)
 
 ## Deploying to Vercel
 
@@ -66,7 +90,10 @@ HTTPServer(('127.0.0.1', 8000), run.handler).serve_forever()
    clone) and [import it into Vercel](https://vercel.com/new).
 2. Set the project's **Root Directory** to `web`.
 3. Vercel auto-detects Next.js for the frontend and `api/run.py` as a
-   Python serverless function — no framework override needed.
+   Python serverless function — no framework override needed. Note this
+   works because there is no `app/api/` directory: Vercel gives the root
+   `api/` directory priority for `/api/*`, so adding Next.js route handlers
+   under `app/api/` later would shadow them and break `/api/run`.
 4. Add environment variables (Project → Settings → Environment Variables):
    - `FINANCIAL_DATASETS_API_KEY`
    - `ANTHROPIC_API_KEY`
