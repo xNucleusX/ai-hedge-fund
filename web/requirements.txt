@@ -1,0 +1,19 @@
+# Runtime deps for api/run.py + the vendored api/hedge_fund/ package
+# (see api/hedge_fund/__init__.py for why it's vendored rather than a
+# `pip install aihf`). Deliberately excludes scipy, matplotlib, and textual
+# — real deps of the full aihf package, but only reachable through
+# backtesting/event_study/tui, none of which this endpoint imports. That
+# keeps the deployed function's uncompressed size near ~230MB instead of
+# ~630MB, under Vercel's serverless function size limit.
+#
+# LLM support is Anthropic-only here (Claude models) to keep the bundle
+# under budget — langchain-openai/-google-genai/-xai/-deepseek each add
+# 20-45MB, mostly from provider SDKs and grpc. The full multi-provider
+# registry (OpenAI, xAI, DeepSeek, Google, Kimi) is still available through
+# the `aihf` CLI (`pip install aihf`) — see the root README.
+pydantic>=2.4.2,<3
+pyyaml>=6.0.3,<7
+pandas>=2.1.0,<3
+numpy>=1.24.0,<2
+requests>=2.32.0,<3
+langchain-anthropic==0.3.5

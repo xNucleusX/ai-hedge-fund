@@ -1,27 +1,41 @@
 [tool.poetry]
-name = "ai-hedge-fund"
-version = "0.1.0"
-description = "An AI-powered hedge fund that uses multiple agents to make trading decisions"
-authors = ["Your Name <your.email@example.com>"]
+name = "aihf"
+version = "2.2.0"
+description = "An AI-powered hedge fund: LLM investor agents and quant alpha models you can build, backtest, and run from your terminal"
+authors = ["Virat Singh <virat.dot@gmail.com>"]
+license = "MIT"
 readme = "README.md"
+homepage = "https://github.com/virattt/ai-hedge-fund"
+repository = "https://github.com/virattt/ai-hedge-fund"
+keywords = ["ai", "hedge-fund", "trading", "llm", "backtesting", "agents"]
 packages = [
-    { include = "src", from = "." }
+    { include = "hedge_fund", from = "." }
 ]
+exclude = [
+    "hedge_fund/**/test_*.py",
+    "hedge_fund/conftest.py",
+]
+
 [tool.poetry.dependencies]
-python = "^3.9"
-langchain = "0.3.0"
+python = "^3.11"
 langchain-anthropic = "0.3.5"
-langchain-groq = "0.2.3"
-langchain-openai = "0.3"
-langgraph = "0.2.56"
+langchain-openai = "^0.3.5"
+langchain-deepseek = "^0.1.2"
+langchain-google-genai = "^2.0.11"
+langchain-xai = "^0.2.5"
 pandas = "^2.1.0"
 numpy = "^1.24.0"
 python-dotenv = "1.0.0"
 matplotlib = "^3.9.2"
-tabulate = "^0.9.0"
-colorama = "^0.4.6"
-questionary = "^2.1.0"
-rich = "^13.9.4"
+requests = "^2.32.0"
+rich = "^14.2.0"
+pydantic = "^2.4.2"
+scipy = "^1.11.0"
+pyyaml = "^6.0.3"
+textual = "^8.2.8"
+
+[tool.poetry.scripts]
+aihf = "hedge_fund.run:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"
@@ -35,5 +49,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 420
-target-version = ['py39']
+target-version = ['py311']
 include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+force_alphabetical_sort_within_sections = true
