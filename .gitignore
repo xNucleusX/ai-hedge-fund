@@ -46,6 +46,7 @@ Thumbs.db
 
 # Txt files
 *.txt
+!web/requirements.txt
 
 # PDF files
 *.pdf
@@ -61,3 +62,11 @@ outputs/
 
 # Local-only release tooling
 scripts/release.sh
+
+# web/ (Next.js dashboard)
+web/node_modules/
+web/.next/
+web/out/
+web/.vercel/
+web/.env.local
+web/next-env.d.ts

@@ -8,6 +8,12 @@ Note: the system does not actually make any trades.
 
 [![Twitter Follow](https://img.shields.io/twitter/follow/virattt?style=social)](https://twitter.com/virattt)
 
+## Web dashboard
+
+`web/` is a Next.js + Python dashboard for building a fund and running a
+live cycle from the browser, deployable on Vercel. See
+[`web/README.md`](web/README.md) for local dev and deployment instructions.
+
 ## Disclaimer
 
 This project is for **educational and research purposes only**.
