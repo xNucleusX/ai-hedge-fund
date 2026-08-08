@@ -1,0 +1,81 @@
+name: Deploy checks
+
+# Guards the things that break the Vercel deploy but not the local build,
+# so a red check here is the signal to stop before a bad production deploy.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_call:
+
+jobs:
+  web:
+    name: web/ build, vendor sync, function size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # matches web/.python-version
+
+      # The deployed site runs web/api/hedge_fund/, not the root package.
+      # If they diverge, the site silently runs stale logic.
+      - name: Vendored engine is in sync with hedge_fund/
+        run: python3 scripts/vendor_web_api.py --check
+
+      - name: Install web deps
+        working-directory: web
+        run: npm ci
+
+      - name: Build
+        working-directory: web
+        run: npm run build
+
+      - name: Production build must not contain a dev API rewrite
+        working-directory: web
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          r = json.load(open(".next/routes-manifest.json")).get("rewrites")
+          if isinstance(r, dict) and any(r.values()) or isinstance(r, list) and r:
+              sys.exit(f"dev rewrite leaked into production build: {r}")
+          print("ok: no rewrite in production build")
+          PY
+
+      - name: Python function imports without numpy/pandas
+        working-directory: web/api
+        run: |
+          python3 -m pip install --quiet -r ../requirements.txt
+          python3 - <<'PY'
+          import builtins
+          _real = builtins.__import__
+          def guard(name, *a, **k):
+              if name.split('.')[0] in ('numpy', 'pandas'):
+                  raise ImportError(f"{name} is not deployed")
+              return _real(name, *a, **k)
+          builtins.__import__ = guard
+          import run  # noqa: F401
+          print("ok: api/run.py imports clean")
+          PY
+
+      # Vercel measures Python deps UNCOMPRESSED against a 250MB limit and
+      # does no tree-shaking. This was 241MB once; the budget leaves room to
+      # notice a regression before a deploy fails.
+      - name: Function size budget
+        working-directory: web
+        run: |
+          python3 -m pip install --quiet --target /tmp/fnsize -r requirements.txt
+          SIZE_MB=$(du -sm /tmp/fnsize | cut -f1)
+          echo "installed dependencies: ${SIZE_MB}MB (budget 200MB, Vercel limit 250MB)"
+          if [ "$SIZE_MB" -gt 200 ]; then
+            echo "::error::Python function deps are ${SIZE_MB}MB, over the 200MB budget."
+            echo "::error::Vercel's limit is 250MB uncompressed. See web/README.md."
+            exit 1
+          fi
