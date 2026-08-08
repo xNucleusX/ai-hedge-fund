@@ -106,6 +106,61 @@ run with 5 analysts × 5 tickers can take a couple of minutes — if you hit
 the timeout, either request fewer tickers/analysts per run, or raise
 `maxDuration` (Pro plans allow up to 300s).
 
+## Continuous deployment
+
+### Every push deploys
+
+This is Vercel's Git integration, not something configured here: once the
+repo is connected, a push to `main` triggers a production deploy and every
+PR gets its own preview URL. Nothing in this repo needs to run for that.
+
+It applies to automated pushes too — a push made by `GITHUB_TOKEN` doesn't
+trigger *other GitHub Actions workflows*, but Vercel deploys off its own
+webhook, so the scheduled sync below still deploys normally.
+
+### Upstream changes sync automatically
+
+`.github/workflows/sync-upstream.yml` merges `virattt/ai-hedge-fund` into
+`main` hourly, and can be run on demand from the Actions tab (with a
+**dry run** option that verifies without pushing).
+
+It is **not** realtime, and can't be: upstream is someone else's
+repository, so there's no webhook to subscribe to — this polls. GitHub also
+runs scheduled workflows on a best-effort basis and drops them under load,
+so treat the cadence as "about hourly" and use the manual trigger when you
+want it now.
+
+Each run merges upstream, **re-vendors `api/hedge_fund/`**, verifies the
+merged tree builds and still fits the size budget, and only then pushes.
+The re-vendor step is the one that matters: the deployed site runs the
+vendored copy, so a sync that updated only the root package would look
+like it worked and change nothing in production.
+
+### When the sync stops
+
+It stops rather than guessing, and both cases need a human:
+
+- **Merge conflict.** Resolve locally, then `python3 scripts/vendor_web_api.py`.
+- **Upstream changed a file carrying local edits** — `signals/base.py` (the
+  numpy/pandas trim) or `__init__.py` (the vendoring note). Re-apply the
+  edit against the new upstream version, then update
+  `api/hedge_fund/.vendor-manifest.json` with the new root-file hash.
+  Re-running the vendor script after porting does this for you.
+
+Check drift at any time:
+
+```bash
+python3 scripts/vendor_web_api.py --check   # CI runs this on every push
+python3 scripts/vendor_web_api.py           # re-vendor
+```
+
+### Repo settings this needs
+
+- **Settings → Actions → General → Workflow permissions**: *Read and write*,
+  so the sync can push to `main`.
+- If `main` is protected, the push will fail — either allow the Actions bot
+  through, or change the last step to open a PR instead.
+
 ## API
 
 `POST /api/run`

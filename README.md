@@ -14,6 +14,12 @@ Note: the system does not actually make any trades.
 live cycle from the browser, deployable on Vercel. See
 [`web/README.md`](web/README.md) for local dev and deployment instructions.
 
+This fork also syncs from upstream on a schedule
+(`.github/workflows/sync-upstream.yml`) and re-vendors the engine copy the
+dashboard's serverless function runs, so upstream changes reach the
+deployed site. `web/README.md` covers what to do when a sync stops for
+review.
+
 ## Disclaimer
 
 This project is for **educational and research purposes only**.
