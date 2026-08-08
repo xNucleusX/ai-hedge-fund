@@ -1,0 +1,19 @@
+# Dashboard-specific ignores.
+#
+# These live here rather than in the root .gitignore on purpose: the root
+# file is owned by upstream (virattt/ai-hedge-fund), and this fork merges
+# upstream on a schedule (.github/workflows/sync-upstream.yml). Every line
+# added to an upstream-owned file is a merge conflict waiting to stop that
+# sync, so fork-specific config stays in fork-specific files.
+
+node_modules/
+.next/
+out/
+.vercel/
+.env.local
+next-env.d.ts
+
+# Re-include this: the root .gitignore excludes *.txt, and requirements.txt
+# is the Vercel function's dependency manifest. A negation in a nested
+# .gitignore still wins for files (it would not for a directory).
+!requirements.txt

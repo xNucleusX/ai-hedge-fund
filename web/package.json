@@ -5,6 +5,7 @@
   "description": "Interactive dashboard for the AI Hedge Fund — build a fund, pick analysts, and run a live cycle.",
   "scripts": {
     "dev": "next dev",
+    "dev:api": "cd api && python3 dev_server.py",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

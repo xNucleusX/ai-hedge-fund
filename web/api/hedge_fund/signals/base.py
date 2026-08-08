@@ -19,8 +19,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-import numpy as np
-import pandas as pd
+import math
 
 from hedge_fund.data.protocol import DataClient
 from hedge_fund.models import Signal
@@ -56,6 +55,15 @@ class QuantModel(AlphaModel):
 
     Houses shared numeric helpers. Subclass this for quant signals like
     PEAD or regime detection.
+
+    VENDORED TRIM: upstream backs these helpers with numpy/pandas. No model
+    shipped in this deployment calls any of them (they are a toolbox for
+    future quant models), and numpy + pandas are ~158MB — enough on their
+    own to push the function past Vercel's size limit. The signatures and
+    behavior are unchanged; only the implementations moved to stdlib
+    `math`, and _compute_rsi imports pandas lazily so it still works for a
+    caller that has pandas installed. Port any upstream change to this file
+    by hand.
     """
 
     # ------------------------------------------------------------------
@@ -69,7 +77,7 @@ class QuantModel(AlphaModel):
             return default
         try:
             f = float(value)
-            return default if (np.isnan(f) or np.isinf(f)) else f
+            return default if (math.isnan(f) or math.isinf(f)) else f
         except (ValueError, TypeError):
             return default
 
@@ -89,11 +97,17 @@ class QuantModel(AlphaModel):
     @staticmethod
     def _sigmoid(x: float, scale: float = 5.0) -> float:
         """Map an unbounded value into (-1, +1) via scaled tanh."""
-        return float(np.tanh(x * scale))
+        return float(math.tanh(x * scale))
 
     @staticmethod
-    def _compute_rsi(prices: pd.Series, period: int = 14) -> float:
-        """Compute the latest RSI value for a price series."""
+    def _compute_rsi(prices, period: int = 14) -> float:
+        """Compute the latest RSI value for a price series (a pd.Series).
+
+        pandas is imported here, not at module scope: this helper is the
+        only pandas user left, and nothing in this deployment calls it.
+        """
+        import pandas as pd
+
         delta = prices.diff()
         gain = delta.where(delta > 0, 0.0).rolling(window=period).mean()
         loss = (-delta.where(delta < 0, 0.0)).rolling(window=period).mean()

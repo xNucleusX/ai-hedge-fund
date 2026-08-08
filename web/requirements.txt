@@ -11,9 +11,14 @@
 # 20-45MB, mostly from provider SDKs and grpc. The full multi-provider
 # registry (OpenAI, xAI, DeepSeek, Google, Kimi) is still available through
 # the `aihf` CLI (`pip install aihf`) — see the root README.
+#
+# pandas and numpy are also absent, and that one needed a code change: the
+# only thing importing them was signals/base.py's QuantModel helpers, which
+# no shipped model calls. See the note in api/hedge_fund/signals/base.py.
+# They cost ~158MB together — with them the function measures 241MB against
+# a 250MB limit, i.e. a deploy that fails the first time a transitive dep
+# grows. Without them it's ~83MB.
 pydantic>=2.4.2,<3
 pyyaml>=6.0.3,<7
-pandas>=2.1.0,<3
-numpy>=1.24.0,<2
 requests>=2.32.0,<3
 langchain-anthropic==0.3.5

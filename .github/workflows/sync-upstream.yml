@@ -1,0 +1,153 @@
+name: Sync upstream
+
+# Pulls virattt/ai-hedge-fund into this fork's main, re-vendors the copy the
+# Vercel function runs, and lets the push to main trigger Vercel's deploy.
+#
+# Not realtime, and it can't be: upstream is someone else's repository, so
+# there is no webhook to subscribe to. This polls. GitHub also queues cron
+# on a best-effort basis and drops runs when Actions is busy, so treat the
+# schedule as "about hourly", and use the manual trigger when you want it now.
+on:
+  schedule:
+    - cron: "17 * * * *" # hourly, off the hour — on-the-hour cron is the most contended
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report what would change without pushing"
+        type: boolean
+        default: false
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UPSTREAM: https://github.com/virattt/ai-hedge-fund.git
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream "$UPSTREAM" 2>/dev/null || git remote set-url upstream "$UPSTREAM"
+          git fetch upstream main
+          echo "UPSTREAM_SHA=$(git rev-parse upstream/main)" >> "$GITHUB_ENV"
+
+      - name: Anything to do?
+        id: check
+        run: |
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already up to date with upstream ($UPSTREAM_SHA)."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "### Upstream commits to merge" >> "$GITHUB_STEP_SUMMARY"
+            git log --oneline HEAD..upstream/main >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Merge upstream
+        if: steps.check.outputs.changed == 'true'
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git merge --no-edit upstream/main; then
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+            git merge --abort || true
+          fi
+
+      # A conflict means a human has to resolve it. Say so loudly and stop —
+      # never force a resolution into a branch that auto-deploys.
+      - name: Stop on conflict
+        if: steps.merge.outputs.conflict == 'true'
+        run: |
+          {
+            echo "## Upstream sync needs a human"
+            echo "\`upstream/main\` (\`$UPSTREAM_SHA\`) conflicts with \`main\`."
+            echo "Resolve locally:"
+            echo '```'
+            echo "git fetch upstream main && git merge upstream/main"
+            echo "python3 scripts/vendor_web_api.py"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      # The site runs web/api/hedge_fund/, so an upstream change only reaches
+      # production once it is re-vendored. This is the step that makes the
+      # sync actually update the deployed site.
+      - name: Re-vendor the web function's engine
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          if ! python3 scripts/vendor_web_api.py; then
+            {
+              echo "## Upstream sync needs a human"
+              echo "Upstream changed a file that carries local edits"
+              echo "(the numpy/pandas trim in \`signals/base.py\`, or the"
+              echo "vendoring note in \`__init__.py\`). Re-apply the edit, then"
+              echo "update \`web/api/hedge_fund/.vendor-manifest.json\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if ! git diff --quiet; then
+            git add web/api/hedge_fund
+            git commit -m "Re-vendor web function engine for upstream $UPSTREAM_SHA"
+            echo "Re-vendored the web function's engine." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # main auto-deploys, so the merged tree gets verified BEFORE it is
+      # pushed — not after, when production is already serving it.
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.changed == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Verify the merged tree builds
+        if: steps.check.outputs.changed == 'true'
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Verify the function still fits and imports
+        if: steps.check.outputs.changed == 'true'
+        working-directory: web
+        run: |
+          python3 -m pip install --quiet --target /tmp/fnsize -r requirements.txt
+          SIZE_MB=$(du -sm /tmp/fnsize | cut -f1)
+          echo "function deps: ${SIZE_MB}MB (budget 200MB, Vercel limit 250MB)"
+          if [ "$SIZE_MB" -gt 200 ]; then
+            echo "::error::Upstream sync pushed the function to ${SIZE_MB}MB, over budget."
+            exit 1
+          fi
+          cd api
+          python3 -m pip install --quiet -r ../requirements.txt
+          python3 -c "import run; print('ok: api/run.py imports')"
+
+      - name: Push to main
+        if: steps.check.outputs.changed == 'true' && inputs.dry_run != true
+        run: |
+          git push origin main
+          echo "Pushed to main — Vercel will deploy." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dry run summary
+        if: steps.check.outputs.changed == 'true' && inputs.dry_run == true
+        run: |
+          echo "Dry run — verified but not pushed." >> "$GITHUB_STEP_SUMMARY"

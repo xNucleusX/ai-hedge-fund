@@ -1,0 +1,7 @@
+{
+  "note": "sha256 of the ROOT hedge_fund/ file each locally-edited vendored file was last ported from; see scripts/vendor_web_api.py",
+  "preserved": {
+    "__init__.py": "5ca8b0d1d223028261a4fd53befda5420200e9d699d4ee6f70209564b86a1418",
+    "signals/base.py": "1a5ea7a11391d2e13739c9cba00ae1d647c96729de4e7529bc34a03ca511a42a"
+  }
+}
